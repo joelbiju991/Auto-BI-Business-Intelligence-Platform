@@ -11,17 +11,25 @@ from etl.database import save_to_database
 from analytics import get_kpis
 
 # Set up the main page layout
-st.set_page_config(page_title="Automated BI Platform", layout="wide")
+st.set_page_config(page_title="Automated BI Platform", page_icon="📈", layout="wide")
 
-# Main Page Title and Description
-st.title("📊 Automated Business Intelligence Platform")
-st.markdown("Upload your raw CSV or Excel data below. The system will automatically clean it, analyze it, and generate insights.")
+st.sidebar.title("📁 Data Ingestion")
+uploaded_file = st.sidebar.file_uploader("Upload CSV or Excel", type=["csv", "xlsx"])
 
-# Create a sidebar for user inputs
-st.sidebar.header("Data Ingestion")
-uploaded_file = st.sidebar.file_uploader("Upload your file", type=["csv", "xlsx"])
+st.sidebar.markdown("---")
+st.sidebar.subheader("👨‍💻 About This Project")
+st.sidebar.info(
+    "**Automated BI Pipeline**\n\n"
+    "**Tech Stack:**\n"
+    "- Python & Streamlit (UI)\n"
+    "- Pandas (ETL Data Cleaning)\n"
+    "- SQLite & SQLAlchemy (Database)\n"
+    "- Git (Version Control)"
+)
 
-# Logic to handle the uploaded file
+st.title("📈 Automated Business Intelligence Platform")
+st.markdown("Transform raw datasets into actionable insights instantly. Upload your data to trigger the automated ETL pipeline.")
+
 if uploaded_file is not None:
     try:
         if uploaded_file.name.endswith('.csv'):
@@ -29,79 +37,93 @@ if uploaded_file is not None:
         elif uploaded_file.name.endswith('.xlsx'):
             df = pd.read_excel(uploaded_file)
         
-        # 1. Clean the data
-        with st.spinner('Cleaning and standardizing data...'):
+        with st.spinner('⚙️ ETL Pipeline Running: Cleaning data...'):
             cleaned_df = clean_data(df)
             
-        # 2. Save to the database
-        with st.spinner('Saving to SQL Database...'):
+        with st.spinner('💾 ETL Pipeline Running: Saving to SQLite...'):
             save_to_database(cleaned_df)
         
-        st.success("File uploaded, cleaned, and securely saved to the database!")
+        st.success("✅ ETL Pipeline Complete: Data cleaned and stored securely!")
         
-        # --- NEW: Sidebar Filter & Download Button ---
+        # --- MULTIPLE SIDEBAR FILTERS ---
         st.sidebar.markdown("---")
-        st.sidebar.header("Dashboard Settings")
+        st.sidebar.subheader("🎛️ Dashboard Controls")
         
-        # Create a list of countries for the dropdown menu
-        country_list = ["All"]
-        if 'country' in cleaned_df.columns:
-            country_list.extend(cleaned_df['country'].unique())
-            
-        # Display the dropdown
-        selected_country = st.sidebar.selectbox("Filter by Country", country_list)
+        # Country Filter
+        country_list = ["All"] + list(cleaned_df['country'].unique()) if 'country' in cleaned_df.columns else ["All"]
+        selected_country = st.sidebar.selectbox("🌍 Filter by Country", country_list)
         
-        # Display the download button
-        csv_data = cleaned_df.to_csv(index=False).encode('utf-8')
+        # Segment Filter
+        segment_list = ["All"] + list(cleaned_df['segment'].unique()) if 'segment' in cleaned_df.columns else ["All"]
+        selected_segment = st.sidebar.selectbox("🏢 Filter by Segment", segment_list)
+        
+        # Product Filter
+        product_list = ["All"] + list(cleaned_df['product'].unique()) if 'product' in cleaned_df.columns else ["All"]
+        selected_product = st.sidebar.selectbox("📦 Filter by Product", product_list)
+        
+        # Download Button
+        export_df = cleaned_df.copy()
+        export_df.columns = export_df.columns.str.replace('_', ' ').str.title()
+        csv_data = export_df.to_csv(index=False).encode('utf-8')
         st.sidebar.download_button(
             label="📥 Download Cleaned Data",
             data=csv_data,
             file_name="cleaned_sales_data.csv",
             mime="text/csv"
         )
-        # ---------------------------------------------
         
-        # 3. Fetch and Display KPIs & Charts
+        # --- UI TABS ---
         st.markdown("---")
-        st.subheader("📈 Executive Dashboard")
+        tab1, tab2, tab3 = st.tabs(["📊 Executive Dashboard", "🗄️ Database Preview", "📄 Preview Whole Data"])
         
-        # Pass the selected country into our analytics engine
-        kpis, sales_by_product, profit_by_segment = get_kpis(selected_country)
-        
-        if kpis:
-            col1, col2, col3 = st.columns(3)
-            formatted_rev = f"${kpis['total_revenue']:,.2f}"
-            formatted_prof = f"${kpis['total_profit']:,.2f}"
+        with tab1:
+            # THIS IS THE LINE THAT FIXES THE ERROR! Expecting 4 items now.
+            kpis, sales_by_product, profit_by_segment, revenue_by_date = get_kpis(selected_country, selected_segment, selected_product)
             
-            col1.metric(label="Total Records Processed", value=kpis['total_rows'])
-            col2.metric(label="Total Revenue", value=formatted_rev)
-            col3.metric(label="Total Profit", value=formatted_prof)
+            if kpis:
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total Records Processed", f"{kpis['total_rows']:,}")
+                col2.metric("Total Revenue", f"${kpis['total_revenue']:,.2f}")
+                col3.metric("Total Profit", f"${kpis['total_profit']:,.2f}")
+                
+                st.markdown("---")
+                
+                # --- Time Series Line Chart ---
+                st.markdown("##### 📅 Revenue Over Time")
+                if revenue_by_date is not None and not revenue_by_date.empty:
+                    y_col = revenue_by_date.columns[1] 
+                    st.line_chart(data=revenue_by_date, x='date', y=y_col)
+                
+                st.markdown("---")
+                
+                # --- Existing Bar Charts ---
+                chart_col1, chart_col2 = st.columns(2)
+                with chart_col1:
+                    st.markdown("##### 🚀 Total Revenue by Product")
+                    if sales_by_product is not None and not sales_by_product.empty:
+                        st.bar_chart(data=sales_by_product, x='product', y=sales_by_product.columns[1])
+                        
+                with chart_col2:
+                    st.markdown("##### 💰 Total Profit by Segment")
+                    if profit_by_segment is not None and not profit_by_segment.empty:
+                        st.bar_chart(data=profit_by_segment, x='segment', y='profit')
+                        
+        with tab2:
+            st.markdown("##### 🗃️ Standardized SQL Data Preview")
+            st.write("This table represents a quick sample (top 100 rows) of the cleaned data.")
+            display_df = cleaned_df.head(100).copy()
+            display_df.columns = display_df.columns.str.replace('_', ' ').str.title()
+            st.dataframe(display_df, use_container_width=True)
             
-            st.markdown("---")
-            st.subheader("📊 Visual Analytics")
+        with tab3:
+            st.markdown("##### 📄 Full Dataset")
+            st.write(f"Displaying all {len(cleaned_df):,} rows of the processed dataset.")
+            full_display_df = cleaned_df.copy()
+            full_display_df.columns = full_display_df.columns.str.replace('_', ' ').str.title()
+            st.dataframe(full_display_df, use_container_width=True)
             
-            chart_col1, chart_col2 = st.columns(2)
-            
-            with chart_col1:
-                st.write("**Total Revenue by Product**")
-                if sales_by_product is not None and not sales_by_product.empty:
-                    st.bar_chart(data=sales_by_product, x='product', y=sales_by_product.columns[1])
-                    
-            with chart_col2:
-                st.write("**Total Profit by Segment**")
-                if profit_by_segment is not None and not profit_by_segment.empty:
-                    st.bar_chart(data=profit_by_segment, x='segment', y='profit')
-        
-        st.markdown("---")
-        st.subheader("Cleaned Data Preview")
-        
-        # --- NEW: Make a display copy and format the column names nicely ---
-        display_df = cleaned_df.head().copy()
-        display_df.columns = display_df.columns.str.replace('_', ' ').str.title()
-        
-        st.dataframe(display_df)
-        
     except Exception as e:
-        st.error(f"An error occurred while processing the file: {e}")
+        st.error(f"❌ An error occurred while processing the file: {e}")
+        
 else:
-    st.info("Awaiting file upload from the sidebar...")
+    st.info("👋 **Welcome to the platform!** Please upload a dataset in the sidebar to begin.")
