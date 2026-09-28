@@ -39,11 +39,34 @@ if uploaded_file is not None:
         
         st.success("File uploaded, cleaned, and securely saved to the database!")
         
+        # --- NEW: Sidebar Filter & Download Button ---
+        st.sidebar.markdown("---")
+        st.sidebar.header("Dashboard Settings")
+        
+        # Create a list of countries for the dropdown menu
+        country_list = ["All"]
+        if 'country' in cleaned_df.columns:
+            country_list.extend(cleaned_df['country'].unique())
+            
+        # Display the dropdown
+        selected_country = st.sidebar.selectbox("Filter by Country", country_list)
+        
+        # Display the download button
+        csv_data = cleaned_df.to_csv(index=False).encode('utf-8')
+        st.sidebar.download_button(
+            label="📥 Download Cleaned Data",
+            data=csv_data,
+            file_name="cleaned_sales_data.csv",
+            mime="text/csv"
+        )
+        # ---------------------------------------------
+        
         # 3. Fetch and Display KPIs & Charts
         st.markdown("---")
         st.subheader("📈 Executive Dashboard")
         
-        kpis, sales_by_product, profit_by_segment = get_kpis()
+        # Pass the selected country into our analytics engine
+        kpis, sales_by_product, profit_by_segment = get_kpis(selected_country)
         
         if kpis:
             col1, col2, col3 = st.columns(3)
@@ -61,19 +84,23 @@ if uploaded_file is not None:
             
             with chart_col1:
                 st.write("**Total Revenue by Product**")
-                if sales_by_product is not None:
+                if sales_by_product is not None and not sales_by_product.empty:
                     st.bar_chart(data=sales_by_product, x='product', y=sales_by_product.columns[1])
                     
             with chart_col2:
                 st.write("**Total Profit by Segment**")
-                if profit_by_segment is not None:
+                if profit_by_segment is not None and not profit_by_segment.empty:
                     st.bar_chart(data=profit_by_segment, x='segment', y='profit')
         
         st.markdown("---")
         st.subheader("Cleaned Data Preview")
-        st.dataframe(cleaned_df.head())
         
-    # The missing block is restored here!
+        # --- NEW: Make a display copy and format the column names nicely ---
+        display_df = cleaned_df.head().copy()
+        display_df.columns = display_df.columns.str.replace('_', ' ').str.title()
+        
+        st.dataframe(display_df)
+        
     except Exception as e:
         st.error(f"An error occurred while processing the file: {e}")
 else:
