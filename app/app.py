@@ -1,13 +1,14 @@
 import sys
 import os
 
-# Tell Python to look in the main project folder so it can find 'etl'
+# Tell Python to look in the main project folder
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import streamlit as st
 import pandas as pd
 from etl.cleaner import clean_data
-from etl.database import save_to_database  # NEW: Importing our database tool
+from etl.database import save_to_database
+from analytics import get_kpis  # NEW: Importing our analytics engine
 
 # Set up the main page layout
 st.set_page_config(page_title="Automated BI Platform", layout="wide")
@@ -38,9 +39,28 @@ if uploaded_file is not None:
         
         st.success("File uploaded, cleaned, and securely saved to the database!")
         
+        # 3. NEW: Fetch and Display KPIs
+        st.markdown("---")
+        st.subheader("📈 Executive Dashboard")
+        
+        kpis = get_kpis()
+        
+        if kpis:
+            # Create 3 columns for our KPI cards
+            col1, col2, col3 = st.columns(3)
+            
+            # Format numbers as currency with commas
+            formatted_rev = f"${kpis['total_revenue']:,.2f}"
+            formatted_prof = f"${kpis['total_profit']:,.2f}"
+            
+            # Display the metric cards
+            col1.metric(label="Total Records Processed", value=kpis['total_rows'])
+            col2.metric(label="Total Revenue", value=formatted_rev)
+            col3.metric(label="Total Profit", value=formatted_prof)
+        
+        st.markdown("---")
         st.subheader("Cleaned Data Preview")
         st.dataframe(cleaned_df.head())
-        st.write(f"**Total Rows:** {cleaned_df.shape[0]} | **Total Columns:** {cleaned_df.shape[1]}")
         
     except Exception as e:
         st.error(f"An error occurred while processing the file: {e}")
